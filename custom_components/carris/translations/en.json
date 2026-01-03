@@ -1,0 +1,63 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Add Carris Bus Stop",
+        "description": "Enter the stop ID. Example stops: {example_stops}. You can find stop IDs in the CARRISway app or at carris.pt",
+        "data": {
+          "stop_id": "Stop ID"
+        }
+      },
+      "route": {
+        "title": "Select Route",
+        "description": "Stop: {stop_name}\nAvailable routes: {routes}",
+        "data": {
+          "route_number": "Route"
+        }
+      }
+    },
+    "error": {
+      "stop_not_found": "Stop not found. Please check the ID.",
+      "unknown": "Unexpected error occurred.",
+      "cannot_connect": "Cannot connect to Carris API.",
+      "auth_failed": "Authentication failed. API key may be invalid."
+    },
+    "abort": {
+      "already_configured": "This stop is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Carris Options",
+        "data": {
+          "route_number": "Route filter (leave empty for all)"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "next_bus": {
+        "name": "Next Bus"
+      },
+      "all_buses": {
+        "name": "All Buses"
+      }
+    },
+    "binary_sensor": {
+      "bus_arriving_soon": {
+        "name": "Bus Arriving Soon",
+        "state": {
+          "on": "Arriving",
+          "off": "Not yet"
+        }
+      }
+    },
+    "device_tracker": {
+      "bus_location": {
+        "name": "Bus Location"
+      }
+    }
+  }
+}

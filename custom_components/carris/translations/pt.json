@@ -1,0 +1,63 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Adicionar Paragem Carris",
+        "description": "Introduza o ID da paragem. Exemplos: {example_stops}. Pode encontrar os IDs na app CARRISway ou em carris.pt",
+        "data": {
+          "stop_id": "ID da Paragem"
+        }
+      },
+      "route": {
+        "title": "Selecionar Carreira",
+        "description": "Paragem: {stop_name}\nCarreiras disponíveis: {routes}",
+        "data": {
+          "route_number": "Carreira"
+        }
+      }
+    },
+    "error": {
+      "stop_not_found": "Paragem não encontrada. Verifique o ID.",
+      "unknown": "Ocorreu um erro inesperado.",
+      "cannot_connect": "Não foi possível ligar à API da Carris.",
+      "auth_failed": "Autenticação falhou. A chave API pode estar inválida."
+    },
+    "abort": {
+      "already_configured": "Esta paragem já está configurada."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Opções Carris",
+        "data": {
+          "route_number": "Filtrar carreira (deixe vazio para todas)"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "next_bus": {
+        "name": "Próximo Autocarro"
+      },
+      "all_buses": {
+        "name": "Todos os Autocarros"
+      }
+    },
+    "binary_sensor": {
+      "bus_arriving_soon": {
+        "name": "Autocarro a Chegar",
+        "state": {
+          "on": "A chegar",
+          "off": "Ainda não"
+        }
+      }
+    },
+    "device_tracker": {
+      "bus_location": {
+        "name": "Localização do Autocarro"
+      }
+    }
+  }
+}
