@@ -63,7 +63,8 @@
         "description": "Configure intervalos de atualização e limites",
         "data": {
           "scan_interval": "Intervalo de atualização (segundos)",
-          "arrival_threshold": "Limite para 'a chegar' (minutos)"
+          "arrival_threshold": "Limite para 'a chegar' (minutos)",
+          "walk_time": "Tempo a pé até à paragem (minutos, 0 para desativar)"
         }
       }
     }

@@ -11,18 +11,26 @@ from homeassistant.config_entries import ConfigEntry, OptionsFlow
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.selector import (
+    NumberSelector,
+    NumberSelectorConfig,
+    NumberSelectorMode,
+)
 
 from .api import CarrisApiClient, StopInfo
 from .const import (
     CONF_ARRIVAL_THRESHOLD,
     CONF_ROUTE_NUMBER,
+    CONF_ROUTES,
     CONF_SCAN_INTERVAL,
     CONF_STOP_ID,
     CONF_STOP_LAT,
     CONF_STOP_LNG,
     CONF_STOP_NAME,
+    CONF_WALK_TIME,
     DEFAULT_ARRIVAL_THRESHOLD,
     DEFAULT_SCAN_INTERVAL,
+    DEFAULT_WALK_TIME,
     DOMAIN,
     ERROR_CONNECTION,
     ERROR_STOP_NOT_FOUND,
@@ -153,6 +161,7 @@ class CarrisConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: ignor
                         CONF_STOP_NAME: self._selected_stop["name"],
                         CONF_STOP_LAT: location.get("lat"),
                         CONF_STOP_LNG: location.get("lng"),
+                        CONF_ROUTES: [],  # No routes available
                     },
                 )
 
@@ -203,6 +212,7 @@ class CarrisConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: ignor
                         CONF_STOP_NAME: stop_info["name"],
                         CONF_STOP_LAT: location.get("lat"),
                         CONF_STOP_LNG: location.get("lng"),
+                        CONF_ROUTES: [],  # No routes available
                     },
                 )
 
@@ -247,6 +257,7 @@ class CarrisConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: ignor
                     CONF_STOP_ID: self._selected_stop["id"],
                     CONF_STOP_NAME: stop_name,
                     CONF_ROUTE_NUMBER: route if route != "all" else None,
+                    CONF_ROUTES: self._available_routes,  # Store all routes for device trackers
                     CONF_STOP_LAT: location.get("lat"),
                     CONF_STOP_LNG: location.get("lng"),
                 },
@@ -301,6 +312,7 @@ class CarrisConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: ignor
                             CONF_STOP_ID: stop_id,
                             CONF_STOP_NAME: stop_info["name"],
                             CONF_ROUTE_NUMBER: route if route != "all" else None,
+                            CONF_ROUTES: routes,  # Store all routes for device trackers
                             CONF_STOP_LAT: location.get("lat"),
                             CONF_STOP_LNG: location.get("lng"),
                         },
@@ -349,6 +361,7 @@ class CarrisOptionsFlowHandler(OptionsFlow):
         arrival_threshold = self.config_entry.options.get(
             CONF_ARRIVAL_THRESHOLD, DEFAULT_ARRIVAL_THRESHOLD
         )
+        walk_time = self.config_entry.options.get(CONF_WALK_TIME, DEFAULT_WALK_TIME)
 
         return self.async_show_form(
             step_id="init",
@@ -357,11 +370,21 @@ class CarrisOptionsFlowHandler(OptionsFlow):
                     vol.Optional(
                         CONF_SCAN_INTERVAL,
                         default=scan_interval,
-                    ): vol.All(vol.Coerce(int), vol.Range(min=30, max=300)),
+                    ): NumberSelector(
+                        NumberSelectorConfig(min=30, max=300, step=1, mode=NumberSelectorMode.BOX)
+                    ),
                     vol.Optional(
                         CONF_ARRIVAL_THRESHOLD,
                         default=arrival_threshold,
-                    ): vol.All(vol.Coerce(int), vol.Range(min=1, max=30)),
+                    ): NumberSelector(
+                        NumberSelectorConfig(min=1, max=15, step=1, mode=NumberSelectorMode.BOX)
+                    ),
+                    vol.Optional(
+                        CONF_WALK_TIME,
+                        default=walk_time,
+                    ): NumberSelector(
+                        NumberSelectorConfig(min=0, max=10, step=1, mode=NumberSelectorMode.BOX)
+                    ),
                 }
             ),
         )

@@ -24,6 +24,7 @@ VEHICLES_SNAPSHOT_ENDPOINT: Final = f"{BASE_URL}/vehicles/getsnapshot"
 # =============================================================================
 CONF_STOP_ID: Final = "stop_id"
 CONF_ROUTE_NUMBER: Final = "route_number"
+CONF_ROUTES: Final = "routes"  # List of all routes serving the stop
 CONF_STOP_NAME: Final = "stop_name"
 CONF_STOP_LAT: Final = "stop_lat"
 CONF_STOP_LNG: Final = "stop_lng"
@@ -33,12 +34,14 @@ CONF_STOP_LNG: Final = "stop_lng"
 # =============================================================================
 CONF_SCAN_INTERVAL: Final = "scan_interval"
 CONF_ARRIVAL_THRESHOLD: Final = "arrival_threshold"
+CONF_WALK_TIME: Final = "walk_time"
 
 # =============================================================================
 # Defaults
 # =============================================================================
 DEFAULT_SCAN_INTERVAL: Final = 60  # seconds (1 minute)
 DEFAULT_ARRIVAL_THRESHOLD: Final = 5  # minutes for "arriving soon" binary sensor
+DEFAULT_WALK_TIME: Final = 0  # minutes - time to walk to bus stop (0 = disabled)
 DEFAULT_API_TIMEOUT: Final = 30  # seconds
 TOKEN_REFRESH_INTERVAL: Final = 43200  # seconds (12 hours)
 

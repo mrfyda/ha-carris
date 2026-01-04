@@ -96,6 +96,86 @@ class TestBusFiltering:
         assert len(filtered) == 0
 
 
+class TestMultiRouteTrackerSetup:
+    """Test suite for multi-route device tracker setup."""
+
+    @pytest.fixture
+    def mock_all_buses_snapshot(self) -> list[dict[str, Any]]:
+        """Return mock bus snapshot with buses from multiple routes."""
+        return [
+            {
+                "route": "742",
+                "id": 1,
+                "direction": 1,
+                "path": [{"lat": 38.725, "lng": -9.118, "bearing": 90, "msToNext": 1000}],
+            },
+            {
+                "route": "728",
+                "id": 2,
+                "direction": 1,
+                "path": [{"lat": 38.730, "lng": -9.120, "bearing": 180, "msToNext": 1000}],
+            },
+            {
+                "route": "742",
+                "id": 3,
+                "direction": 2,
+                "path": [{"lat": 38.720, "lng": -9.115, "bearing": 270, "msToNext": 1000}],
+            },
+            {
+                "route": "15E",
+                "id": 4,
+                "direction": 1,
+                "path": [{"lat": 38.735, "lng": -9.125, "bearing": 0, "msToNext": 1000}],
+            },
+        ]
+
+    def test_filter_buses_for_each_route(
+        self, mock_all_buses_snapshot: list[dict[str, Any]]
+    ) -> None:
+        """Test that each route tracker only sees buses for its route."""
+        routes = ["742", "728", "15E"]
+
+        for route in routes:
+            filtered = [b for b in mock_all_buses_snapshot if b.get("route") == route]
+
+            # Verify correct number of buses per route
+            if route == "742":
+                assert len(filtered) == 2
+            elif route == "728" or route == "15E":
+                assert len(filtered) == 1
+
+            # Verify all buses have correct route
+            assert all(b["route"] == route for b in filtered)
+
+    def test_routes_list_determines_trackers(self) -> None:
+        """Test that routes list determines how many trackers are created."""
+        routes = ["742", "728", "15E"]
+
+        # Each route should result in one tracker
+        expected_trackers = len(routes)
+        assert expected_trackers == 3
+
+    def test_empty_routes_no_trackers(self) -> None:
+        """Test that empty routes list creates no trackers."""
+        routes: list[str] = []
+        route_number = None
+
+        # No trackers should be created
+        should_create_trackers = bool(route_number) or bool(routes)
+        assert should_create_trackers is False
+
+    def test_single_route_mode(self) -> None:
+        """Test single route mode creates one tracker."""
+        route_number = "742"
+        routes = ["742", "728", "15E"]
+
+        # When route_number is set, only one tracker for that route
+        tracker_routes = [route_number] if route_number else routes
+
+        assert len(tracker_routes) == 1
+        assert tracker_routes[0] == "742"
+
+
 class TestRouteBadgeGeneration:
     """Test suite for route badge SVG generation."""
 

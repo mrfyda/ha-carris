@@ -157,6 +157,7 @@ class TestConfigFlowConstants:
             CONF_STOP_LAT,
             CONF_STOP_LNG,
             CONF_STOP_NAME,
+            CONF_WALK_TIME,
         )
 
         assert CONF_STOP_ID is not None
@@ -166,3 +167,4 @@ class TestConfigFlowConstants:
         assert CONF_STOP_LNG is not None
         assert CONF_SCAN_INTERVAL is not None
         assert CONF_ARRIVAL_THRESHOLD is not None
+        assert CONF_WALK_TIME is not None

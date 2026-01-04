@@ -8,14 +8,17 @@ from custom_components.carris.const import (
     ATTRIBUTION,
     CONF_ARRIVAL_THRESHOLD,
     CONF_ROUTE_NUMBER,
+    CONF_ROUTES,
     CONF_SCAN_INTERVAL,
     CONF_STOP_ID,
     CONF_STOP_LAT,
     CONF_STOP_LNG,
     CONF_STOP_NAME,
+    CONF_WALK_TIME,
     DEFAULT_API_TIMEOUT,
     DEFAULT_ARRIVAL_THRESHOLD,
     DEFAULT_SCAN_INTERVAL,
+    DEFAULT_WALK_TIME,
     DOMAIN,
     MANUFACTURER,
     MODEL_BUS_STOP,
@@ -34,10 +37,12 @@ class TestCarrisConstants:
         assert CONF_STOP_ID == "stop_id"
         assert CONF_STOP_NAME == "stop_name"
         assert CONF_ROUTE_NUMBER == "route_number"
+        assert CONF_ROUTES == "routes"
         assert CONF_STOP_LAT == "stop_lat"
         assert CONF_STOP_LNG == "stop_lng"
         assert CONF_SCAN_INTERVAL == "scan_interval"
         assert CONF_ARRIVAL_THRESHOLD == "arrival_threshold"
+        assert CONF_WALK_TIME == "walk_time"
 
     def test_defaults_are_reasonable(self) -> None:
         """Test that default values are reasonable."""
@@ -45,6 +50,8 @@ class TestCarrisConstants:
         assert 30 <= DEFAULT_SCAN_INTERVAL <= 300
         # Arrival threshold should be between 1 and 30 minutes
         assert 1 <= DEFAULT_ARRIVAL_THRESHOLD <= 30
+        # Walk time should be between 0 and 15 minutes (0 = disabled)
+        assert 0 <= DEFAULT_WALK_TIME <= 15
         # API timeout should be between 5 and 60 seconds
         assert 5 <= DEFAULT_API_TIMEOUT <= 60
 

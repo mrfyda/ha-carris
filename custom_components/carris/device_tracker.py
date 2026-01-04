@@ -20,6 +20,7 @@ from .api import BusArrivalResponse, BusSnapshotItem
 from .const import (
     ATTRIBUTION,
     CONF_ROUTE_NUMBER,
+    CONF_ROUTES,
     CONF_STOP_ID,
     CONF_STOP_LAT,
     CONF_STOP_LNG,
@@ -43,30 +44,60 @@ async def async_setup_entry(
     config = data["config"]
     bus_coordinator = data.get("bus_coordinator")
     arrival_coordinator = data.get("arrival_coordinator")
+    direction: int | None = data.get("direction")
+    directions: dict[str, int] = data.get("directions", {})
 
     stop_id: int = config[CONF_STOP_ID]
     route_number: str | None = config.get(CONF_ROUTE_NUMBER)
+    routes: list[str] = config.get(CONF_ROUTES, [])
     stop_name: str = config.get(CONF_STOP_NAME, f"Stop {stop_id}")
     stop_lat: float | None = config.get(CONF_STOP_LAT)
     stop_lng: float | None = config.get(CONF_STOP_LNG)
 
-    # Only create device tracker if a specific route is configured and coordinator exists
-    if not route_number or bus_coordinator is None:
-        _LOGGER.debug("No specific route configured or no bus coordinator, skipping device tracker")
+    # Skip if no bus coordinator available
+    if bus_coordinator is None:
+        _LOGGER.debug("No bus coordinator available, skipping device tracker")
         return
 
-    entities: list[TrackerEntity] = [
-        CarrisBusTracker(
-            bus_coordinator,
-            arrival_coordinator,
-            entry,
-            stop_id,
-            route_number,
-            stop_name,
-            stop_lat,
-            stop_lng,
-        ),
-    ]
+    entities: list[TrackerEntity] = []
+
+    if route_number:
+        # Single route mode: create one tracker for the specified route
+        entities.append(
+            CarrisBusTracker(
+                bus_coordinator,
+                arrival_coordinator,
+                entry,
+                stop_id,
+                route_number,
+                stop_name,
+                stop_lat,
+                stop_lng,
+                direction,
+            )
+        )
+    elif routes:
+        # All routes mode: create one tracker per route that serves the stop
+        _LOGGER.debug("Creating device trackers for %d routes at stop %s", len(routes), stop_id)
+        for route in routes:
+            route_direction = directions.get(route)
+            entities.append(
+                CarrisBusTracker(
+                    bus_coordinator,
+                    arrival_coordinator,
+                    entry,
+                    stop_id,
+                    route,
+                    stop_name,
+                    stop_lat,
+                    stop_lng,
+                    route_direction,
+                )
+            )
+
+    if not entities:
+        _LOGGER.debug("No routes configured, skipping device tracker")
+        return
 
     _LOGGER.info("Adding %d Carris device tracker entities", len(entities))
     async_add_entities(entities, True)
@@ -90,6 +121,7 @@ class CarrisBusTracker(
         stop_name: str,
         stop_lat: float | None,
         stop_lng: float | None,
+        direction: int | None = None,
     ) -> None:
         """Initialize the device tracker."""
         super().__init__(coordinator)
@@ -99,6 +131,7 @@ class CarrisBusTracker(
         self._stop_name = stop_name
         self._stop_lat = stop_lat
         self._stop_lng = stop_lng
+        self._direction = direction
         self._entry = entry
 
         self._attr_unique_id = f"carris_{stop_id}_{route_number}_bus_location"
@@ -157,9 +190,7 @@ class CarrisBusTracker(
         arrivals: list[BusArrivalResponse] = self._arrival_coordinator.data or []
 
         # Check if any arrivals are for this route
-        route_arrivals = [
-            a for a in arrivals if a.get("routeNumber") == self._route_number
-        ]
+        route_arrivals = [a for a in arrivals if a.get("routeNumber") == self._route_number]
 
         if route_arrivals:
             _LOGGER.debug(
@@ -230,8 +261,21 @@ class CarrisBusTracker(
         return (None, None)
 
     def _get_nearest_bus(self) -> BusSnapshotItem | None:
-        """Get the nearest bus on the route."""
+        """Get the nearest bus on the route heading toward this stop."""
         buses: list[BusSnapshotItem] = self.coordinator.data or []
+
+        if not buses:
+            return None
+
+        # Filter buses by route number (important when coordinator has all buses)
+        buses = [bus for bus in buses if bus.get("route") == self._route_number]
+
+        if not buses:
+            return None
+
+        # Filter by direction if known (only show buses heading toward this stop)
+        if self._direction is not None:
+            buses = [bus for bus in buses if bus.get("direction") == self._direction]
 
         if not buses:
             return None
@@ -308,12 +352,18 @@ class CarrisBusTracker(
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return extra attributes."""
         bus = self._get_nearest_bus()
-        buses: list[BusSnapshotItem] = self.coordinator.data or []
+        all_buses: list[BusSnapshotItem] = self.coordinator.data or []
+        # Filter buses by route for accurate count
+        buses_on_route = [b for b in all_buses if b.get("route") == self._route_number]
+        # Also filter by direction if known
+        if self._direction is not None:
+            buses_on_route = [b for b in buses_on_route if b.get("direction") == self._direction]
 
         attrs: dict[str, Any] = {
             "stop_id": self._stop_id,
             "route_number": self._route_number,
-            "buses_on_route": len(buses),
+            "buses_on_route": len(buses_on_route),
+            "direction": self._direction,
         }
 
         if bus:
@@ -322,7 +372,6 @@ class CarrisBusTracker(
             attrs["bus_lng"] = lng
             attrs["vehicle_id"] = bus.get("id")
             attrs["plate"] = bus.get("plate")
-            attrs["direction"] = bus.get("direction")
 
         if self._stop_lat is not None and self._stop_lng is not None:
             attrs["stop_lat"] = self._stop_lat

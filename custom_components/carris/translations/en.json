@@ -63,7 +63,8 @@
         "description": "Configure update intervals and thresholds",
         "data": {
           "scan_interval": "Update interval (seconds)",
-          "arrival_threshold": "Arriving soon threshold (minutes)"
+          "arrival_threshold": "Arriving soon threshold (minutes)",
+          "walk_time": "Walk time to stop (minutes, 0 to disable)"
         }
       }
     }

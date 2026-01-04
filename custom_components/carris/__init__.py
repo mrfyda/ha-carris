@@ -15,6 +15,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from .api import BusArrivalResponse, BusSnapshotItem, CarrisApiClient
 from .const import (
     CONF_ROUTE_NUMBER,
+    CONF_ROUTES,
     CONF_SCAN_INTERVAL,
     CONF_STOP_ID,
     DEFAULT_SCAN_INTERVAL,
@@ -43,6 +44,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     stop_id: int = entry.data[CONF_STOP_ID]
     route_number: str | None = entry.data.get(CONF_ROUTE_NUMBER)
+    routes: list[str] = entry.data.get(CONF_ROUTES, [])
 
     # Get scan interval from options or use default
     scan_interval = entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
@@ -68,12 +70,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         update_interval=arrival_scan_interval,
     )
 
-    # Create bus position coordinator (for device_tracker, only if route specified)
+    # Create bus position coordinator (for device_tracker)
     bus_coordinator: DataUpdateCoordinator[list[BusSnapshotItem]] | None = None
     direction: int | None = None
+    directions: dict[str, int] = {}  # Route -> direction mapping for all-routes mode
 
     if route_number:
-        # Detect direction for this stop/route
+        # Single route mode: fetch buses for that route only
         direction = await client.get_direction_for_stop(route_number, stop_id)
         if direction:
             _LOGGER.info(
@@ -101,6 +104,40 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             update_method=async_update_bus_positions,
             update_interval=bus_position_scan_interval,
         )
+    elif routes:
+        # All routes mode: detect direction for each route
+        _LOGGER.debug("Detecting directions for %d routes at stop %d", len(routes), stop_id)
+        for route in routes:
+            route_direction = await client.get_direction_for_stop(route, stop_id)
+            if route_direction:
+                directions[route] = route_direction
+                _LOGGER.debug(
+                    "Detected direction %d for route %s at stop %d",
+                    route_direction,
+                    route,
+                    stop_id,
+                )
+
+        async def async_update_all_bus_positions() -> list[BusSnapshotItem]:
+            """Fetch all bus positions from API."""
+            try:
+                result = await client.get_bus_snapshot()
+                _LOGGER.debug(
+                    "Carris API returned %d total buses",
+                    len(result) if result else 0,
+                )
+                return result
+            except Exception as err:
+                _LOGGER.warning("Failed to fetch Carris bus positions: %s", err)
+                raise UpdateFailed(f"Failed to fetch bus positions: {err}") from err
+
+        bus_coordinator = DataUpdateCoordinator(
+            hass,
+            _LOGGER,
+            name=f"carris_{stop_id}_all_buses",
+            update_method=async_update_all_bus_positions,
+            update_interval=bus_position_scan_interval,
+        )
 
     # Perform initial refresh
     await arrival_coordinator.async_config_entry_first_refresh()
@@ -113,6 +150,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "arrival_coordinator": arrival_coordinator,
         "bus_coordinator": bus_coordinator,
         "direction": direction,
+        "directions": directions,  # Route -> direction mapping for all-routes mode
     }
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)

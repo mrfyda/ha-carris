@@ -26,7 +26,9 @@ from .const import (
     CONF_ROUTE_NUMBER,
     CONF_STOP_ID,
     CONF_STOP_NAME,
+    CONF_WALK_TIME,
     DEFAULT_ARRIVAL_THRESHOLD,
+    DEFAULT_WALK_TIME,
     DOMAIN,
     MANUFACTURER,
     MODEL_BUS_STOP,
@@ -85,6 +87,8 @@ class CarrisBusArrivingSoonSensor(
         self._entry = entry
         # Get threshold from options or use default
         self._threshold = entry.options.get(CONF_ARRIVAL_THRESHOLD, DEFAULT_ARRIVAL_THRESHOLD)
+        # Get walk time from options or use default (0 = disabled)
+        self._walk_time = entry.options.get(CONF_WALK_TIME, DEFAULT_WALK_TIME)
 
         route_suffix = f"_{route_number}" if route_number else ""
         self._attr_unique_id = f"carris_{stop_id}{route_suffix}_arriving_soon"
@@ -144,11 +148,13 @@ class CarrisBusArrivingSoonSensor(
 
     @property
     def is_on(self) -> bool:
-        """Return true if bus is arriving within threshold."""
+        """Return true if bus is arriving within threshold + walk time."""
         minutes = self._get_minutes_to_next_bus()
         if minutes is None:
             return False
-        return minutes <= self._threshold
+        # Add walk time to threshold to account for time needed to get to the stop
+        effective_threshold = self._threshold + self._walk_time
+        return minutes <= effective_threshold
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -162,6 +168,8 @@ class CarrisBusArrivingSoonSensor(
         attrs: dict[str, Any] = {
             "stop_id": self._stop_id,
             "threshold_minutes": self._threshold,
+            "walk_time_minutes": self._walk_time,
+            "effective_threshold_minutes": self._threshold + self._walk_time,
             "minutes_to_arrival": minutes,
         }
 
