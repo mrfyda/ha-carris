@@ -19,14 +19,15 @@ from homeassistant.helpers.update_coordinator import (
 )
 
 from .const import (
-    DOMAIN,
-    CONF_STOP_ID,
+    ATTRIBUTION,
+    CONF_ARRIVAL_THRESHOLD,
     CONF_ROUTE_NUMBER,
+    CONF_STOP_ID,
     CONF_STOP_NAME,
     DEFAULT_ARRIVAL_THRESHOLD,
+    DOMAIN,
     MANUFACTURER,
     MODEL_BUS_STOP,
-    ATTRIBUTION,
 )
 from .api import BusArrivalResponse
 
@@ -43,12 +44,7 @@ async def async_setup_entry(
 
     data = hass.data[DOMAIN][entry.entry_id]
     config = data["config"]
-    
-    # Wait for coordinator to be created by sensor platform
-    coordinator = data.get("coordinator")
-    if coordinator is None:
-        _LOGGER.warning("Coordinator not found, binary sensor setup delayed")
-        return
+    coordinator = data["arrival_coordinator"]
 
     stop_id: int = config[CONF_STOP_ID]
     route_number: str | None = config.get(CONF_ROUTE_NUMBER)
@@ -88,7 +84,8 @@ class CarrisBusArrivingSoonSensor(
         self._route_number = route_number
         self._stop_name = stop_name
         self._entry = entry
-        self._threshold = DEFAULT_ARRIVAL_THRESHOLD
+        # Get threshold from options or use default
+        self._threshold = entry.options.get(CONF_ARRIVAL_THRESHOLD, DEFAULT_ARRIVAL_THRESHOLD)
 
         route_suffix = f"_{route_number}" if route_number else ""
         self._attr_unique_id = f"carris_{stop_id}{route_suffix}_arriving_soon"
@@ -99,6 +96,11 @@ class CarrisBusArrivingSoonSensor(
             self._attr_name,
             self._attr_unique_id,
         )
+
+    @property
+    def available(self) -> bool:
+        """Return True if entity is available."""
+        return self.coordinator.last_update_success
 
     @property
     def icon(self) -> str:
@@ -114,6 +116,7 @@ class CarrisBusArrivingSoonSensor(
             manufacturer=MANUFACTURER,
             model=MODEL_BUS_STOP,
             configuration_url="https://www.carris.pt",
+            suggested_area="Transport",
         )
 
     def _get_minutes_to_next_bus(self) -> int | None:

@@ -6,6 +6,7 @@ It has no Home Assistant dependencies and can be used independently.
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timedelta, timezone
 from typing import Any, TypedDict
 
 import aiohttp
@@ -20,6 +21,14 @@ from .const import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+# Refresh token 1 hour before expiry
+TOKEN_REFRESH_BUFFER = timedelta(hours=1)
+
+# Retry configuration
+MAX_RETRIES = 3
+INITIAL_RETRY_DELAY = 1.0  # seconds
+MAX_RETRY_DELAY = 30.0  # seconds
 
 
 # =============================================================================
@@ -119,11 +128,20 @@ class CarrisApiClient:
         """
         self._session = session
         self._token: str | None = None
+        self._token_expires_at: datetime | None = None
 
     @property
     def has_token(self) -> bool:
         """Check if a token is available."""
         return self._token is not None
+
+    @property
+    def token_is_expired(self) -> bool:
+        """Check if the token is expired or about to expire."""
+        if self._token is None or self._token_expires_at is None:
+            return True
+        # Consider expired if within the refresh buffer
+        return datetime.now(timezone.utc) >= (self._token_expires_at - TOKEN_REFRESH_BUFFER)
 
     async def refresh_token(self) -> str:
         """Get a new API token.
@@ -141,8 +159,20 @@ class CarrisApiClient:
                 response.raise_for_status()
                 data: TokenResponse = await response.json()
                 self._token = data["access_token"]
-                _LOGGER.debug("Carris token refreshed")
+                # Calculate expiry time
+                expires_in = data.get("expires_in", 86400)  # Default to 24 hours
+                self._token_expires_at = datetime.now(timezone.utc) + timedelta(seconds=expires_in)
+                _LOGGER.debug(
+                    "Carris token refreshed, expires at %s",
+                    self._token_expires_at.isoformat()
+                )
                 return self._token
+
+    async def _ensure_valid_token(self) -> None:
+        """Ensure we have a valid token, refreshing if needed."""
+        if self.token_is_expired:
+            _LOGGER.debug("Token expired or missing, refreshing...")
+            await self.refresh_token()
 
     def _get_auth_headers(self) -> dict[str, str]:
         """Get headers with authentication."""
@@ -154,7 +184,7 @@ class CarrisApiClient:
     async def _request_with_retry(
         self, url: str, headers: dict[str, str]
     ) -> Any:
-        """Make a GET request with automatic token refresh on 401.
+        """Make a GET request with exponential backoff retry.
         
         Args:
             url: The URL to request.
@@ -164,20 +194,85 @@ class CarrisApiClient:
             The JSON response data.
             
         Raises:
-            aiohttp.ClientError: If the request fails after retry.
+            aiohttp.ClientError: If the request fails after all retries.
             asyncio.TimeoutError: If the request times out.
         """
-        async with async_timeout.timeout(DEFAULT_API_TIMEOUT):
-            async with self._session.get(url, headers=headers) as response:
-                if response.status == 401:
-                    # Token expired, refresh and retry
-                    await self.refresh_token()
-                    headers["Authorization"] = f"Bearer {self._token}"
-                    async with self._session.get(url, headers=headers) as retry_response:
-                        retry_response.raise_for_status()
-                        return await retry_response.json()
-                response.raise_for_status()
-                return await response.json()
+        import asyncio
+        
+        last_exception: Exception | None = None
+        delay = INITIAL_RETRY_DELAY
+        
+        for attempt in range(MAX_RETRIES + 1):
+            try:
+                async with async_timeout.timeout(DEFAULT_API_TIMEOUT):
+                    async with self._session.get(url, headers=headers) as response:
+                        if response.status == 401:
+                            # Token expired, refresh and retry immediately
+                            _LOGGER.debug("Got 401, refreshing token...")
+                            await self.refresh_token()
+                            headers["Authorization"] = f"Bearer {self._token}"
+                            async with self._session.get(url, headers=headers) as retry_response:
+                                retry_response.raise_for_status()
+                                return await retry_response.json()
+                        
+                        if response.status == 429:
+                            # Rate limited, use exponential backoff
+                            retry_after = response.headers.get("Retry-After")
+                            wait_time = float(retry_after) if retry_after else delay
+                            _LOGGER.warning(
+                                "Rate limited, waiting %s seconds before retry",
+                                wait_time
+                            )
+                            await asyncio.sleep(wait_time)
+                            delay = min(delay * 2, MAX_RETRY_DELAY)
+                            continue
+                        
+                        if response.status >= 500:
+                            # Server error, retry with backoff
+                            _LOGGER.warning(
+                                "Server error %d on attempt %d, retrying in %s seconds",
+                                response.status, attempt + 1, delay
+                            )
+                            await asyncio.sleep(delay)
+                            delay = min(delay * 2, MAX_RETRY_DELAY)
+                            continue
+                        
+                        response.raise_for_status()
+                        return await response.json()
+                        
+            except asyncio.TimeoutError as err:
+                last_exception = err
+                if attempt < MAX_RETRIES:
+                    _LOGGER.warning(
+                        "Timeout on attempt %d, retrying in %s seconds",
+                        attempt + 1, delay
+                    )
+                    await asyncio.sleep(delay)
+                    delay = min(delay * 2, MAX_RETRY_DELAY)
+                else:
+                    _LOGGER.error("Request timed out after %d attempts", MAX_RETRIES + 1)
+                    raise
+                    
+            except aiohttp.ClientConnectionError as err:
+                last_exception = err
+                if attempt < MAX_RETRIES:
+                    _LOGGER.warning(
+                        "Connection error on attempt %d: %s, retrying in %s seconds",
+                        attempt + 1, err, delay
+                    )
+                    await asyncio.sleep(delay)
+                    delay = min(delay * 2, MAX_RETRY_DELAY)
+                else:
+                    _LOGGER.error(
+                        "Connection failed after %d attempts: %s",
+                        MAX_RETRIES + 1, err
+                    )
+                    raise
+        
+        # If we get here, all retries failed
+        if last_exception:
+            raise last_exception
+        raise aiohttp.ClientError("Request failed after all retries")
 
     async def get_next_buses(self, stop_id: int) -> list[BusArrivalResponse]:
         """Get next buses at a stop.
@@ -188,8 +283,7 @@ class CarrisApiClient:
         Returns:
             List of upcoming bus arrivals.
         """
-        if not self._token:
-            await self.refresh_token()
+        await self._ensure_valid_token()
 
         headers = self._get_auth_headers()
         url = f"{BASE_URL}/busstops/getnextroutesatstop?stopIds={stop_id}"
@@ -201,8 +295,7 @@ class CarrisApiClient:
         Returns:
             List of all bus stops with their information.
         """
-        if not self._token:
-            await self.refresh_token()
+        await self._ensure_valid_token()
 
         headers = self._get_auth_headers()
         url = f"{BASE_URL}/busstops/getall"
@@ -214,8 +307,7 @@ class CarrisApiClient:
         Returns:
             List of bus positions. Empty list if request fails.
         """
-        if not self._token:
-            await self.refresh_token()
+        await self._ensure_valid_token()
 
         headers = self._get_auth_headers()
         url = f"{VEHICLES_SNAPSHOT_ENDPOINT}?culture=pt-PT"
@@ -293,14 +385,12 @@ class CarrisApiClient:
         Returns:
             Direction (1 or 2) that serves this stop, or None if not found.
         """
-        if not self._token:
-            await self.refresh_token()
+        await self._ensure_valid_token()
         
         headers = self._get_auth_headers()
         
         # Get today's date
-        from datetime import date
-        today = date.today().isoformat()
+        today = datetime.now(timezone.utc).date().isoformat()
         
         # Try direction 1
         url = f"{BASE_URL}/routes/getbusstoptimes?routeNumber={route_number}&stopId={stop_id}&direction=1&date={today}"

@@ -28,6 +28,12 @@ CONF_STOP_LAT: Final = "stop_lat"
 CONF_STOP_LNG: Final = "stop_lng"
 
 # =============================================================================
+# Options Keys
+# =============================================================================
+CONF_SCAN_INTERVAL: Final = "scan_interval"
+CONF_ARRIVAL_THRESHOLD: Final = "arrival_threshold"
+
+# =============================================================================
 # Defaults
 # =============================================================================
 DEFAULT_SCAN_INTERVAL: Final = 60  # seconds (1 minute)

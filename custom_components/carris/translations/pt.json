@@ -3,6 +3,27 @@
     "step": {
       "user": {
         "title": "Adicionar Paragem Carris",
+        "menu_options": {
+          "search": "Pesquisar paragem por nome",
+          "manual": "Introduzir ID da paragem manualmente"
+        }
+      },
+      "search": {
+        "title": "Pesquisar Paragem",
+        "description": "Introduza parte do nome da paragem para pesquisar",
+        "data": {
+          "stop_search": "Nome da paragem"
+        }
+      },
+      "select_stop": {
+        "title": "Selecionar Paragem",
+        "description": "Selecione uma paragem dos resultados da pesquisa",
+        "data": {
+          "stop_selection": "Paragem"
+        }
+      },
+      "manual": {
+        "title": "Introduzir ID da Paragem",
         "description": "Introduza o ID da paragem. Exemplos: {example_stops}. Pode encontrar os IDs na app CARRISway ou em carris.pt",
         "data": {
           "stop_id": "ID da Paragem"
@@ -17,9 +38,9 @@
       }
     },
     "error": {
-      "stop_not_found": "Paragem não encontrada. Verifique o ID.",
+      "stop_not_found": "Nenhuma paragem encontrada. Tente um termo diferente.",
       "unknown": "Ocorreu um erro inesperado.",
-      "cannot_connect": "Não foi possível ligar à API da Carris.",
+      "cannot_connect": "Não foi possível ligar à API da Carris. Tente novamente mais tarde.",
       "auth_failed": "Autenticação falhou. A chave API pode estar inválida."
     },
     "abort": {
@@ -30,8 +51,10 @@
     "step": {
       "init": {
         "title": "Opções Carris",
+        "description": "Configure intervalos de atualização e limites",
         "data": {
-          "route_number": "Filtrar carreira (deixe vazio para todas)"
+          "scan_interval": "Intervalo de atualização (segundos)",
+          "arrival_threshold": "Limite para 'a chegar' (minutos)"
         }
       }
     }
