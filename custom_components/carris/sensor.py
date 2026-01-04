@@ -1,12 +1,12 @@
 """Sensor platform for Carris integration."""
+
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
 import logging
+from datetime import UTC, datetime
 from typing import Any
 
 from homeassistant.components.sensor import (
-    SensorDeviceClass,
     SensorEntity,
     SensorStateClass,
 )
@@ -19,22 +19,18 @@ from homeassistant.helpers.update_coordinator import (
     DataUpdateCoordinator,
 )
 
+from .api import BusArrivalResponse
 from .const import (
-    DOMAIN,
-    CONF_STOP_ID,
+    ATTRIBUTION,
     CONF_ROUTE_NUMBER,
+    CONF_STOP_ID,
     CONF_STOP_NAME,
-    DEFAULT_SCAN_INTERVAL,
+    DOMAIN,
     MANUFACTURER,
     MODEL_BUS_STOP,
-    ATTRIBUTION,
 )
-from .api import BusArrivalResponse
 
 _LOGGER = logging.getLogger(__name__)
-
-# Refresh every 1 minute (60 seconds)
-SCAN_INTERVAL = timedelta(seconds=DEFAULT_SCAN_INTERVAL)
 
 
 async def async_setup_entry(
@@ -46,39 +42,14 @@ async def async_setup_entry(
     _LOGGER.debug("Setting up Carris sensor for entry: %s", entry.entry_id)
 
     data = hass.data[DOMAIN][entry.entry_id]
-    client = data["client"]
     config = data["config"]
+    coordinator = data["arrival_coordinator"]
 
     stop_id: int = config[CONF_STOP_ID]
     route_number: str | None = config.get(CONF_ROUTE_NUMBER)
     stop_name: str = config.get(CONF_STOP_NAME, f"Stop {stop_id}")
 
     _LOGGER.debug("Carris config: stop_id=%s, route=%s, name=%s", stop_id, route_number, stop_name)
-
-    async def async_update_data() -> list[BusArrivalResponse]:
-        """Fetch data from API."""
-        try:
-            result = await client.get_next_buses(stop_id)
-            _LOGGER.debug("Carris API returned %d buses", len(result) if result else 0)
-            return result
-        except Exception as err:
-            _LOGGER.warning("Failed to fetch Carris data: %s", err, exc_info=True)
-            return []
-
-    coordinator: DataUpdateCoordinator[list[BusArrivalResponse]] = DataUpdateCoordinator(
-        hass,
-        _LOGGER,
-        name=f"carris_{stop_id}",
-        update_method=async_update_data,
-        update_interval=SCAN_INTERVAL,
-    )
-
-    # Store coordinator in hass.data for other platforms to use
-    hass.data[DOMAIN][entry.entry_id]["coordinator"] = coordinator
-
-    # Don't fail if first refresh fails - just start with empty data
-    await coordinator.async_refresh()
-    _LOGGER.debug("Carris coordinator data: %s", coordinator.data)
 
     entities: list[SensorEntity] = [
         CarrisNextBusSensor(coordinator, entry, stop_id, route_number, stop_name),
@@ -88,11 +59,13 @@ async def async_setup_entry(
     if not route_number:
         entities.append(CarrisAllBusesSensor(coordinator, entry, stop_id, stop_name))
 
-    _LOGGER.info("Adding %d Carris entities", len(entities))
+    _LOGGER.info("Adding %d Carris sensor entities", len(entities))
     async_add_entities(entities, True)
 
 
-class CarrisBaseSensor(CoordinatorEntity[DataUpdateCoordinator[list[BusArrivalResponse]]], SensorEntity):
+class CarrisBaseSensor(
+    CoordinatorEntity[DataUpdateCoordinator[list[BusArrivalResponse]]], SensorEntity
+):
     """Base sensor for Carris entities."""
 
     _attr_attribution = ATTRIBUTION
@@ -112,6 +85,11 @@ class CarrisBaseSensor(CoordinatorEntity[DataUpdateCoordinator[list[BusArrivalRe
         self._entry = entry
 
     @property
+    def available(self) -> bool:
+        """Return True if entity is available."""
+        return self.coordinator.last_update_success
+
+    @property
     def device_info(self) -> DeviceInfo:
         """Return device information."""
         return DeviceInfo(
@@ -120,6 +98,7 @@ class CarrisBaseSensor(CoordinatorEntity[DataUpdateCoordinator[list[BusArrivalRe
             manufacturer=MANUFACTURER,
             model=MODEL_BUS_STOP,
             configuration_url="https://www.carris.pt",
+            suggested_area="Transport",
         )
 
 
@@ -144,10 +123,10 @@ class CarrisNextBusSensor(CarrisBaseSensor):
 
         route_suffix = f"_{route_number}" if route_number else ""
         self._attr_unique_id = f"carris_{stop_id}{route_suffix}_next"
-        
+
         # Entity name (device name will be prepended by HA)
         self._attr_name = f"Next {route_number}" if route_number else "Next Bus"
-        
+
         _LOGGER.debug("Created sensor: %s (unique_id: %s)", self._attr_name, self._attr_unique_id)
 
     def _get_filtered_buses(self) -> list[BusArrivalResponse]:
@@ -173,7 +152,7 @@ class CarrisNextBusSensor(CarrisBaseSensor):
 
         try:
             arrival = datetime.fromisoformat(arrival_str.replace("Z", "+00:00"))
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             diff = (arrival - now).total_seconds() / 60
             return max(0, round(diff))
         except (ValueError, TypeError):
@@ -199,11 +178,13 @@ class CarrisNextBusSensor(CarrisBaseSensor):
         # Add next 5 buses
         upcoming: list[dict[str, Any]] = []
         for bus in buses[:5]:
-            upcoming.append({
-                "route": bus.get("routeNumber"),
-                "destination": bus.get("destination"),
-                "time": bus.get("stopTime"),
-            })
+            upcoming.append(
+                {
+                    "route": bus.get("routeNumber"),
+                    "destination": bus.get("destination"),
+                    "time": bus.get("stopTime"),
+                }
+            )
         attrs["upcoming_buses"] = upcoming
 
         return attrs

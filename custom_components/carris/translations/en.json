@@ -3,6 +3,27 @@
     "step": {
       "user": {
         "title": "Add Carris Bus Stop",
+        "menu_options": {
+          "search": "Search for stop by name",
+          "manual": "Enter stop ID manually"
+        }
+      },
+      "search": {
+        "title": "Search for Bus Stop",
+        "description": "Enter part of the stop name to search",
+        "data": {
+          "stop_search": "Stop name"
+        }
+      },
+      "select_stop": {
+        "title": "Select Bus Stop",
+        "description": "Select a stop from the search results",
+        "data": {
+          "stop_selection": "Bus Stop"
+        }
+      },
+      "manual": {
+        "title": "Enter Stop ID",
         "description": "Enter the stop ID. Example stops: {example_stops}. You can find stop IDs in the CARRISway app or at carris.pt",
         "data": {
           "stop_id": "Stop ID"
@@ -17,9 +38,9 @@
       }
     },
     "error": {
-      "stop_not_found": "Stop not found. Please check the ID.",
+      "stop_not_found": "No stops found. Try a different search term.",
       "unknown": "Unexpected error occurred.",
-      "cannot_connect": "Cannot connect to Carris API.",
+      "cannot_connect": "Cannot connect to Carris API. Please try again later.",
       "auth_failed": "Authentication failed. API key may be invalid."
     },
     "abort": {
@@ -30,8 +51,10 @@
     "step": {
       "init": {
         "title": "Carris Options",
+        "description": "Configure update intervals and thresholds",
         "data": {
-          "route_number": "Route filter (leave empty for all)"
+          "scan_interval": "Update interval (seconds)",
+          "arrival_threshold": "Arriving soon threshold (minutes)"
         }
       }
     }

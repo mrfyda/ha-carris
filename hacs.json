@@ -1,8 +1,6 @@
 {
   "name": "Carris Bus",
   "render_readme": true,
-  "domains": ["sensor", "binary_sensor", "device_tracker"],
   "country": ["PT"],
-  "homeassistant": "2023.1.0",
-  "iot_class": "cloud_polling"
+  "homeassistant": "2023.1.0"
 }

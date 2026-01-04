@@ -1,8 +1,9 @@
 """Binary sensor platform for Carris integration."""
+
 from __future__ import annotations
 
-from datetime import datetime, timezone
 import logging
+from datetime import UTC, datetime
 from typing import Any
 
 from homeassistant.components.binary_sensor import (
@@ -18,17 +19,18 @@ from homeassistant.helpers.update_coordinator import (
     DataUpdateCoordinator,
 )
 
+from .api import BusArrivalResponse
 from .const import (
-    DOMAIN,
-    CONF_STOP_ID,
+    ATTRIBUTION,
+    CONF_ARRIVAL_THRESHOLD,
     CONF_ROUTE_NUMBER,
+    CONF_STOP_ID,
     CONF_STOP_NAME,
     DEFAULT_ARRIVAL_THRESHOLD,
+    DOMAIN,
     MANUFACTURER,
     MODEL_BUS_STOP,
-    ATTRIBUTION,
 )
-from .api import BusArrivalResponse
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -43,21 +45,14 @@ async def async_setup_entry(
 
     data = hass.data[DOMAIN][entry.entry_id]
     config = data["config"]
-    
-    # Wait for coordinator to be created by sensor platform
-    coordinator = data.get("coordinator")
-    if coordinator is None:
-        _LOGGER.warning("Coordinator not found, binary sensor setup delayed")
-        return
+    coordinator = data["arrival_coordinator"]
 
     stop_id: int = config[CONF_STOP_ID]
     route_number: str | None = config.get(CONF_ROUTE_NUMBER)
     stop_name: str = config.get(CONF_STOP_NAME, f"Stop {stop_id}")
 
     entities: list[BinarySensorEntity] = [
-        CarrisBusArrivingSoonSensor(
-            coordinator, entry, stop_id, route_number, stop_name
-        ),
+        CarrisBusArrivingSoonSensor(coordinator, entry, stop_id, route_number, stop_name),
     ]
 
     _LOGGER.info("Adding %d Carris binary sensor entities", len(entities))
@@ -88,7 +83,8 @@ class CarrisBusArrivingSoonSensor(
         self._route_number = route_number
         self._stop_name = stop_name
         self._entry = entry
-        self._threshold = DEFAULT_ARRIVAL_THRESHOLD
+        # Get threshold from options or use default
+        self._threshold = entry.options.get(CONF_ARRIVAL_THRESHOLD, DEFAULT_ARRIVAL_THRESHOLD)
 
         route_suffix = f"_{route_number}" if route_number else ""
         self._attr_unique_id = f"carris_{stop_id}{route_suffix}_arriving_soon"
@@ -99,6 +95,11 @@ class CarrisBusArrivingSoonSensor(
             self._attr_name,
             self._attr_unique_id,
         )
+
+    @property
+    def available(self) -> bool:
+        """Return True if entity is available."""
+        return self.coordinator.last_update_success
 
     @property
     def icon(self) -> str:
@@ -114,6 +115,7 @@ class CarrisBusArrivingSoonSensor(
             manufacturer=MANUFACTURER,
             model=MODEL_BUS_STOP,
             configuration_url="https://www.carris.pt",
+            suggested_area="Transport",
         )
 
     def _get_minutes_to_next_bus(self) -> int | None:
@@ -134,7 +136,7 @@ class CarrisBusArrivingSoonSensor(
 
         try:
             arrival = datetime.fromisoformat(arrival_str.replace("Z", "+00:00"))
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             diff = (arrival - now).total_seconds() / 60
             return max(0, round(diff))
         except (ValueError, TypeError):
@@ -170,4 +172,3 @@ class CarrisBusArrivingSoonSensor(
             attrs["next_arrival_time"] = next_bus.get("stopTime")
 
         return attrs
-

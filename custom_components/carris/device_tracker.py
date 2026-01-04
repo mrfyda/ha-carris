@@ -1,7 +1,7 @@
 """Device tracker platform for Carris integration."""
+
 from __future__ import annotations
 
-from datetime import timedelta
 import logging
 from typing import Any
 
@@ -16,23 +16,19 @@ from homeassistant.helpers.update_coordinator import (
     DataUpdateCoordinator,
 )
 
+from .api import BusSnapshotItem
 from .const import (
-    DOMAIN,
-    CONF_STOP_ID,
+    ATTRIBUTION,
     CONF_ROUTE_NUMBER,
-    CONF_STOP_NAME,
+    CONF_STOP_ID,
     CONF_STOP_LAT,
     CONF_STOP_LNG,
-    DEFAULT_SCAN_INTERVAL,
+    CONF_STOP_NAME,
+    DOMAIN,
     MANUFACTURER,
-    ATTRIBUTION,
 )
-from .api import BusSnapshotItem, CarrisApiClient
 
 _LOGGER = logging.getLogger(__name__)
-
-# Refresh bus positions slightly more frequently
-BUS_SCAN_INTERVAL = timedelta(seconds=DEFAULT_SCAN_INTERVAL // 2)
 
 
 async def async_setup_entry(
@@ -44,8 +40,8 @@ async def async_setup_entry(
     _LOGGER.debug("Setting up Carris device tracker for entry: %s", entry.entry_id)
 
     data = hass.data[DOMAIN][entry.entry_id]
-    client: CarrisApiClient = data["client"]
     config = data["config"]
+    bus_coordinator = data.get("bus_coordinator")
 
     stop_id: int = config[CONF_STOP_ID]
     route_number: str | None = config.get(CONF_ROUTE_NUMBER)
@@ -53,54 +49,10 @@ async def async_setup_entry(
     stop_lat: float | None = config.get(CONF_STOP_LAT)
     stop_lng: float | None = config.get(CONF_STOP_LNG)
 
-    # Only create device tracker if a specific route is configured
-    if not route_number:
-        _LOGGER.debug("No specific route configured, skipping device tracker")
+    # Only create device tracker if a specific route is configured and coordinator exists
+    if not route_number or bus_coordinator is None:
+        _LOGGER.debug("No specific route configured or no bus coordinator, skipping device tracker")
         return
-
-    # Detect the correct direction for this stop/route combination
-    direction = await client.get_direction_for_stop(route_number, stop_id)
-    if direction:
-        _LOGGER.info(
-            "Detected direction %d for route %s at stop %d",
-            direction, route_number, stop_id
-        )
-    else:
-        _LOGGER.warning(
-            "Could not detect direction for route %s at stop %d, showing all buses",
-            route_number, stop_id
-        )
-
-    async def async_update_bus_positions() -> list[BusSnapshotItem]:
-        """Fetch bus positions from API."""
-        try:
-            result = await client.get_buses_for_route(route_number, direction)
-            _LOGGER.debug(
-                "Carris API returned %d buses for route %s (direction %s)",
-                len(result) if result else 0,
-                route_number,
-                direction,
-            )
-            return result
-        except Exception as err:
-            _LOGGER.warning(
-                "Failed to fetch Carris bus positions: %s", err, exc_info=True
-            )
-            return []
-
-    bus_coordinator: DataUpdateCoordinator[list[BusSnapshotItem]] = DataUpdateCoordinator(
-        hass,
-        _LOGGER,
-        name=f"carris_{stop_id}_{route_number}_buses",
-        update_method=async_update_bus_positions,
-        update_interval=BUS_SCAN_INTERVAL,
-    )
-
-    # Store coordinator for potential future use
-    hass.data[DOMAIN][entry.entry_id]["bus_coordinator"] = bus_coordinator
-
-    # Initial refresh
-    await bus_coordinator.async_refresh()
 
     entities: list[TrackerEntity] = [
         CarrisBusTracker(
@@ -125,7 +77,6 @@ class CarrisBusTracker(
     """Device tracker for the next arriving bus."""
 
     _attr_attribution = ATTRIBUTION
-    _attr_has_entity_name = True
 
     def __init__(
         self,
@@ -147,14 +98,48 @@ class CarrisBusTracker(
         self._entry = entry
 
         self._attr_unique_id = f"carris_{stop_id}_{route_number}_bus_location"
-        self._attr_name = f"Bus {route_number}"
+        # Use just the route number as name so it shows on the map marker
+        self._attr_name = route_number
         self._attr_icon = "mdi:bus"
+        # Disable has_entity_name so the name isn't prefixed with device name
+        self._attr_has_entity_name = False
+        # Generate SVG badge with route number for map display
+        self._attr_entity_picture = self._generate_route_badge(route_number)
 
         _LOGGER.debug(
             "Created device tracker: %s (unique_id: %s)",
             self._attr_name,
             self._attr_unique_id,
         )
+
+    @staticmethod
+    def _generate_route_badge(route_number: str) -> str:
+        """Generate an SVG data URL with the route number for map display."""
+        import base64
+
+        # Adjust font size based on route number length
+        if len(route_number) <= 2:
+            font_size = 16
+        elif len(route_number) == 3:
+            font_size = 13
+        else:
+            font_size = 10
+
+        # Carris brand colors: yellow background, blue text
+        svg = (
+            f'<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40">'
+            f'<circle cx="20" cy="20" r="18" fill="#FFCC00" stroke="#003366" stroke-width="2"/>'
+            f'<text x="20" y="25" text-anchor="middle" fill="#003366" '
+            f'font-family="Arial,sans-serif" font-size="{font_size}" font-weight="bold">'
+            f"{route_number}</text></svg>"
+        )
+        encoded = base64.b64encode(svg.encode()).decode()
+        return f"data:image/svg+xml;base64,{encoded}"
+
+    @property
+    def available(self) -> bool:
+        """Return True if entity is available."""
+        return self.coordinator.last_update_success
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -165,6 +150,7 @@ class CarrisBusTracker(
             manufacturer=MANUFACTURER,
             model="Bus",
             configuration_url="https://www.carris.pt",
+            suggested_area="Transport",
         )
 
     @property
@@ -174,7 +160,7 @@ class CarrisBusTracker(
 
     def _get_bus_coordinates(self, bus: BusSnapshotItem) -> tuple[float | None, float | None]:
         """Extract coordinates from a bus object.
-        
+
         The Carris API returns coordinates in a 'path' array where each item
         has 'lat' and 'lng' fields. We use the first (most recent) position.
         """
@@ -187,53 +173,59 @@ class CarrisBusTracker(
                 lng = first_pos.get("lng")
                 if lat is not None and lng is not None:
                     return (float(lat), float(lng))
-        
+
         # Fallback: try nested location object
         location = bus.get("location", {})
         if isinstance(location, dict) and location:
-            lat = location.get("lat") or location.get("latitude")
-            lng = location.get("lng") or location.get("longitude")
-            if lat is not None and lng is not None:
-                return (float(lat), float(lng))
-        
+            loc_lat = location.get("lat") or location.get("latitude")
+            loc_lng = location.get("lng") or location.get("longitude")
+            if loc_lat is not None and loc_lng is not None:
+                return (float(loc_lat), float(loc_lng))
+
         # Fallback: try flat structure
-        lat = bus.get("lat") or bus.get("latitude")
-        lng = bus.get("lng") or bus.get("longitude")
-        if lat is not None and lng is not None:
-            return (float(lat), float(lng))
-        
+        flat_lat = bus.get("lat") or bus.get("latitude")
+        flat_lng = bus.get("lng") or bus.get("longitude")
+        if flat_lat is not None and flat_lng is not None:
+            try:
+                return (float(flat_lat), float(flat_lng))  # type: ignore[arg-type]
+            except (TypeError, ValueError):
+                pass
+
         return (None, None)
 
     def _get_nearest_bus(self) -> BusSnapshotItem | None:
         """Get the nearest bus on the route."""
         buses: list[BusSnapshotItem] = self.coordinator.data or []
-        
+
         if not buses:
             return None
 
         # Filter buses that have valid coordinates
+        buses_with_coords = [(bus, self._get_bus_coordinates(bus)) for bus in buses]
         buses_with_coords = [
-            (bus, self._get_bus_coordinates(bus))
-            for bus in buses
-        ]
-        buses_with_coords = [
-            (bus, coords) for bus, coords in buses_with_coords
+            (bus, coords)
+            for bus, coords in buses_with_coords
             if coords[0] is not None and coords[1] is not None
         ]
-        
+
         if not buses_with_coords:
             _LOGGER.debug("No buses with valid coordinates found")
             return buses[0] if buses else None
 
         # If we have stop coordinates, find the nearest bus
         if self._stop_lat is not None and self._stop_lng is not None:
-            def distance_to_stop(item: tuple[BusSnapshotItem, tuple[float | None, float | None]]) -> float:
+            stop_lat = self._stop_lat
+            stop_lng = self._stop_lng
+
+            def distance_to_stop(
+                item: tuple[BusSnapshotItem, tuple[float | None, float | None]],
+            ) -> float:
                 _, coords = item
                 bus_lat, bus_lng = coords
                 if bus_lat is None or bus_lng is None:
-                    return float('inf')
+                    return float("inf")
                 # Simple Euclidean distance (good enough for nearby buses)
-                return ((bus_lat - self._stop_lat) ** 2 + (bus_lng - self._stop_lng) ** 2) ** 0.5
+                return ((bus_lat - stop_lat) ** 2 + (bus_lng - stop_lng) ** 2) ** 0.5
 
             # Sort by distance and return nearest
             sorted_buses = sorted(buses_with_coords, key=distance_to_stop)
@@ -249,7 +241,7 @@ class CarrisBusTracker(
         if bus is None:
             # Fallback to stop location if no bus found
             return self._stop_lat
-        
+
         lat, _ = self._get_bus_coordinates(bus)
         return lat if lat is not None else self._stop_lat
 
@@ -260,7 +252,7 @@ class CarrisBusTracker(
         if bus is None:
             # Fallback to stop location if no bus found
             return self._stop_lng
-        
+
         _, lng = self._get_bus_coordinates(bus)
         return lng if lng is not None else self._stop_lng
 
@@ -295,4 +287,3 @@ class CarrisBusTracker(
             attrs["stop_lng"] = self._stop_lng
 
         return attrs
-

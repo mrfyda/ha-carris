@@ -5,10 +5,15 @@ Custom integration for Home Assistant to display real-time bus arrival times fro
 ## Features
 
 - Real-time bus arrival times
+- Real-time bus location tracking (device tracker)
+- Binary sensor for "bus arriving soon" notifications
 - Filter by specific route or show all buses
-- Configurable via UI (no YAML required)
-- Automatic token refresh
+- Search stops by name or enter ID manually
+- Configurable update intervals and thresholds
+- Automatic token refresh with proactive renewal
+- Robust error handling with retry logic
 - Portuguese and English translations
+- HACS compatible
 
 ## Installation
 
@@ -30,12 +35,20 @@ Custom integration for Home Assistant to display real-time bus arrival times fro
 
 1. Go to **Settings → Devices & Services → Add Integration**
 2. Search for **"Carris"**
-3. Enter the stop ID (e.g., `9804`)
+3. Choose how to find your stop:
+   - **Search by name**: Enter part of the stop name and select from results
+   - **Manual entry**: Enter the stop ID directly (e.g., `9804`)
 4. Select a route or "All routes"
+
+### Options
+
+After setup, you can configure options in the integration settings:
+- **Update interval**: How often to fetch new data (30-300 seconds)
+- **Arriving soon threshold**: Minutes for "arriving soon" binary sensor (1-30 minutes)
 
 ### Finding Stop IDs
 
-You can find stop IDs:
+If you prefer manual entry, you can find stop IDs:
 - In the CARRISway app
 - At [carris.pt](https://www.carris.pt)
 - Using the API (see [API Documentation](../../CARRIS_API.md))
@@ -101,6 +114,59 @@ See [CARRIS_API.md](../../CARRIS_API.md) for full API documentation, including:
 - Check Home Assistant logs for errors
 - The API token refreshes automatically every 12 hours
 - Real-time data may not be available for all routes (especially on weekends)
+
+## Development
+
+### Setup
+
+```bash
+# Clone the repository
+git clone https://github.com/mrfyda/ha-carris.git
+cd ha-carris
+
+# Create virtual environment
+python -m venv venv
+source venv/bin/activate
+
+# Install dependencies
+pip install -e ".[dev]"
+
+# Install pre-commit hooks
+pre-commit install
+```
+
+### Running Tests
+
+```bash
+# Run all tests
+pytest tests/ -v
+
+# Run with coverage
+pytest tests/ -v --cov=custom_components/carris --cov-report=term-missing
+```
+
+### Linting
+
+```bash
+# Run ruff linter
+ruff check custom_components/carris/
+
+# Run ruff formatter
+ruff format custom_components/carris/
+
+# Run type checker
+mypy custom_components/carris/ --ignore-missing-imports
+```
+
+### CI/CD
+
+This project uses GitHub Actions for continuous integration:
+
+- **Lint**: Runs ruff linter and formatter checks
+- **Type Check**: Runs mypy type checking
+- **Test**: Runs pytest on Python 3.11 and 3.12
+- **Validate**: Validates manifest.json, strings.json, and translations
+- **HACS**: Validates HACS requirements
 
 ## Credits
 

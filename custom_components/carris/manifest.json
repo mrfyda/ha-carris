@@ -1,7 +1,7 @@
 {
   "domain": "carris",
   "name": "Carris Bus",
-  "codeowners": [],
+  "codeowners": ["@mrfyda"],
   "config_flow": true,
   "dependencies": [],
   "documentation": "https://github.com/mrfyda/ha-carris",
