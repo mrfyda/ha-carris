@@ -35,13 +35,22 @@
         "data": {
           "route_number": "Carreira"
         }
+      },
+      "reconfigure": {
+        "title": "Reconfigurar Paragem Carris",
+        "description": "ID da paragem atual: {current_stop}. Introduza novo ID da paragem e opcionalmente um número de carreira (ou 'all' para todas).",
+        "data": {
+          "stop_id": "ID da Paragem",
+          "route_number": "Número da carreira (opcional)"
+        }
       }
     },
     "error": {
       "stop_not_found": "Nenhuma paragem encontrada. Tente um termo diferente.",
       "unknown": "Ocorreu um erro inesperado.",
       "cannot_connect": "Não foi possível ligar à API da Carris. Tente novamente mais tarde.",
-      "auth_failed": "Autenticação falhou. A chave API pode estar inválida."
+      "auth_failed": "Autenticação falhou. A chave API pode estar inválida.",
+      "invalid_route": "A carreira especificada não serve esta paragem."
     },
     "abort": {
       "already_configured": "Esta paragem já está configurada."

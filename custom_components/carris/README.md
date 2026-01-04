@@ -1,6 +1,17 @@
 # Carris Bus - Home Assistant Integration
 
-Custom integration for Home Assistant to display real-time bus arrival times from **Carris** (Lisbon municipal bus operator).
+[![HACS](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+Custom integration for Home Assistant to display real-time bus arrival times and locations from **Carris**, the municipal bus operator serving Lisbon, Portugal.
+
+## About Carris
+
+[Carris](https://www.carris.pt) (Companhia Carris de Ferro de Lisboa) operates the urban bus network in Lisbon and surrounding areas. This integration uses the same real-time data that powers the official CARRISway mobile app, providing:
+
+- Real-time vehicle positions via GPS
+- Estimated arrival times at stops
+- Route and destination information
 
 ## Features
 
@@ -109,11 +120,47 @@ See [CARRIS_API.md](../../CARRIS_API.md) for full API documentation, including:
 ### "Stop not found"
 - Verify the stop ID exists using the API or CARRISway app
 - Stop IDs are numeric (e.g., `9804`)
+- Try searching by stop name instead of manual entry
 
 ### No data showing
-- Check Home Assistant logs for errors
+- Check Home Assistant logs for errors (`Logger: custom_components.carris`)
 - The API token refreshes automatically every 12 hours
 - Real-time data may not be available for all routes (especially on weekends)
+- Some routes may not have GPS tracking enabled
+
+### Bus location not updating
+- Device tracker updates every 30 seconds by default
+- Check if the route has active buses in service
+- Location is based on GPS data from vehicles, which may be delayed
+
+### "Cannot connect to Carris API"
+- The Carris API may be temporarily unavailable
+- Check your internet connection
+- The integration will automatically retry failed requests
+
+### Diagnostics
+
+To help debug issues, the integration provides diagnostics data:
+1. Go to **Settings → Devices & Services → Carris**
+2. Click the three dots menu (⋮)
+3. Select **Download diagnostics**
+
+Share this file (with sensitive data redacted) when reporting issues.
+
+## Known Limitations
+
+- **Night buses**: May have limited or no real-time data during late hours
+- **Weekend service**: Some routes have reduced GPS tracking on weekends
+- **API rate limits**: The integration respects API rate limits with automatic backoff
+- **Direction detection**: Bus direction is detected based on the first arrival; if no buses are arriving, direction defaults to the most common
+
+## Reconfiguration
+
+To change the stop or route without removing the integration:
+1. Go to **Settings → Devices & Services → Carris**
+2. Click the three dots menu (⋮)
+3. Select **Reconfigure**
+4. Enter the new stop ID and route
 
 ## Development
 

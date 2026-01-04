@@ -25,6 +25,7 @@ _HA_MOCKS = [
     "homeassistant.components.binary_sensor",
     "homeassistant.components.device_tracker",
     "homeassistant.components.device_tracker.config_entry",
+    "homeassistant.components.diagnostics",
     "homeassistant.data_entry_flow",
     "voluptuous",
 ]

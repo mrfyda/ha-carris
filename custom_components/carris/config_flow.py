@@ -83,9 +83,9 @@ class CarrisConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: ignor
 
     @staticmethod
     @callback
-    def async_get_options_flow(config_entry: ConfigEntry) -> OptionsFlow:
+    def async_get_options_flow(_config_entry: ConfigEntry) -> OptionsFlow:
         """Get the options flow for this handler."""
-        return CarrisOptionsFlowHandler(config_entry)
+        return CarrisOptionsFlowHandler()
 
     async def async_step_user(self, _user_input: dict[str, Any] | None = None) -> FlowResult:
         """Handle the initial step - choose search or manual entry."""
@@ -270,6 +270,66 @@ class CarrisConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: ignor
             },
         )
 
+    async def async_step_reconfigure(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+        """Handle reconfiguration of the integration."""
+        errors: dict[str, str] = {}
+        reconfigure_entry = self._get_reconfigure_entry()
+
+        if user_input is not None:
+            stop_id: int = user_input[CONF_STOP_ID]
+
+            try:
+                stop_info = await validate_stop(self.hass, stop_id)
+
+                # Get available routes at this stop
+                routes: list[str] = [r["routeNumber"] for r in stop_info.get("routes", [])]
+                route = user_input.get(CONF_ROUTE_NUMBER)
+
+                # Validate route if specified
+                if route and route != "all" and route not in routes:
+                    errors["base"] = "invalid_route"
+                else:
+                    location = stop_info.get("location", {})
+                    return self.async_update_reload_and_abort(
+                        reconfigure_entry,
+                        title=(
+                            f"Carris {route} - {stop_info['name']}"
+                            if route and route != "all"
+                            else f"Carris - {stop_info['name']}"
+                        ),
+                        data={
+                            CONF_STOP_ID: stop_id,
+                            CONF_STOP_NAME: stop_info["name"],
+                            CONF_ROUTE_NUMBER: route if route != "all" else None,
+                            CONF_STOP_LAT: location.get("lat"),
+                            CONF_STOP_LNG: location.get("lng"),
+                        },
+                    )
+
+            except ValueError:
+                errors["base"] = ERROR_STOP_NOT_FOUND
+            except Exception:
+                _LOGGER.exception("Unexpected error during reconfigure")
+                errors["base"] = ERROR_UNKNOWN
+
+        # Get current values for defaults
+        current_stop_id = reconfigure_entry.data.get(CONF_STOP_ID, 0)
+        current_route = reconfigure_entry.data.get(CONF_ROUTE_NUMBER) or "all"
+
+        return self.async_show_form(
+            step_id="reconfigure",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_STOP_ID, default=current_stop_id): int,
+                    vol.Optional(CONF_ROUTE_NUMBER, default=current_route): str,
+                }
+            ),
+            errors=errors,
+            description_placeholders={
+                "current_stop": str(current_stop_id),
+            },
+        )
+
 
 # =============================================================================
 # Options Flow
@@ -278,10 +338,6 @@ class CarrisConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: ignor
 
 class CarrisOptionsFlowHandler(OptionsFlow):
     """Handle Carris options flow."""
-
-    def __init__(self, config_entry: ConfigEntry) -> None:
-        """Initialize options flow."""
-        self.config_entry = config_entry
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> FlowResult:
         """Manage the options."""

@@ -35,13 +35,22 @@
         "data": {
           "route_number": "Route"
         }
+      },
+      "reconfigure": {
+        "title": "Reconfigure Carris Stop",
+        "description": "Current stop ID: {current_stop}. Enter new stop ID and optionally a route number (or 'all' for all routes).",
+        "data": {
+          "stop_id": "Stop ID",
+          "route_number": "Route number (optional)"
+        }
       }
     },
     "error": {
       "stop_not_found": "No stops found. Try a different search term.",
       "unknown": "Unexpected error occurred.",
       "cannot_connect": "Cannot connect to Carris API. Please try again later.",
-      "auth_failed": "Authentication failed. API key may be invalid."
+      "auth_failed": "Authentication failed. API key may be invalid.",
+      "invalid_route": "The specified route does not serve this stop."
     },
     "abort": {
       "already_configured": "This stop is already configured."

@@ -16,7 +16,7 @@ from homeassistant.helpers.update_coordinator import (
     DataUpdateCoordinator,
 )
 
-from .api import BusSnapshotItem
+from .api import BusArrivalResponse, BusSnapshotItem
 from .const import (
     ATTRIBUTION,
     CONF_ROUTE_NUMBER,
@@ -42,6 +42,7 @@ async def async_setup_entry(
     data = hass.data[DOMAIN][entry.entry_id]
     config = data["config"]
     bus_coordinator = data.get("bus_coordinator")
+    arrival_coordinator = data.get("arrival_coordinator")
 
     stop_id: int = config[CONF_STOP_ID]
     route_number: str | None = config.get(CONF_ROUTE_NUMBER)
@@ -57,6 +58,7 @@ async def async_setup_entry(
     entities: list[TrackerEntity] = [
         CarrisBusTracker(
             bus_coordinator,
+            arrival_coordinator,
             entry,
             stop_id,
             route_number,
@@ -81,6 +83,7 @@ class CarrisBusTracker(
     def __init__(
         self,
         coordinator: DataUpdateCoordinator[list[BusSnapshotItem]],
+        arrival_coordinator: DataUpdateCoordinator[list[BusArrivalResponse]] | None,
         entry: ConfigEntry,
         stop_id: int,
         route_number: str,
@@ -90,6 +93,7 @@ class CarrisBusTracker(
     ) -> None:
         """Initialize the device tracker."""
         super().__init__(coordinator)
+        self._arrival_coordinator = arrival_coordinator
         self._stop_id = stop_id
         self._route_number = route_number
         self._stop_name = stop_name
@@ -140,6 +144,38 @@ class CarrisBusTracker(
     def available(self) -> bool:
         """Return True if entity is available."""
         return self.coordinator.last_update_success
+
+    def _has_pending_arrivals(self) -> bool:
+        """Check if there are pending arrivals for this route at this stop.
+
+        This helps filter out buses that have already passed the stop.
+        If no arrival data is available, assume buses might still be coming.
+        """
+        if self._arrival_coordinator is None:
+            return True  # No arrival data, assume buses might be coming
+
+        arrivals: list[BusArrivalResponse] = self._arrival_coordinator.data or []
+
+        # Check if any arrivals are for this route
+        route_arrivals = [
+            a for a in arrivals if a.get("routeNumber") == self._route_number
+        ]
+
+        if route_arrivals:
+            _LOGGER.debug(
+                "Found %d pending arrivals for route %s at stop %s",
+                len(route_arrivals),
+                self._route_number,
+                self._stop_id,
+            )
+            return True
+
+        _LOGGER.debug(
+            "No pending arrivals for route %s at stop %s - bus may have passed",
+            self._route_number,
+            self._stop_id,
+        )
+        return False
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -237,24 +273,30 @@ class CarrisBusTracker(
     @property
     def latitude(self) -> float | None:
         """Return latitude of the bus."""
+        # Don't show bus location if it has already passed the stop
+        if not self._has_pending_arrivals():
+            return None
+
         bus = self._get_nearest_bus()
         if bus is None:
-            # Fallback to stop location if no bus found
-            return self._stop_lat
+            return None
 
         lat, _ = self._get_bus_coordinates(bus)
-        return lat if lat is not None else self._stop_lat
+        return lat
 
     @property
     def longitude(self) -> float | None:
         """Return longitude of the bus."""
+        # Don't show bus location if it has already passed the stop
+        if not self._has_pending_arrivals():
+            return None
+
         bus = self._get_nearest_bus()
         if bus is None:
-            # Fallback to stop location if no bus found
-            return self._stop_lng
+            return None
 
         _, lng = self._get_bus_coordinates(bus)
-        return lng if lng is not None else self._stop_lng
+        return lng
 
     @property
     def location_accuracy(self) -> int:

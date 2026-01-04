@@ -6,12 +6,12 @@ It has no Home Assistant dependencies and can be used independently.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import UTC, datetime, timedelta
 from typing import Any, TypedDict
 
 import aiohttp
-import async_timeout
 
 from .const import (
     API_KEY,
@@ -158,7 +158,7 @@ class CarrisApiClient:
         headers = {"X-Gravitee-Api-Key": API_KEY}
 
         async with (
-            async_timeout.timeout(DEFAULT_API_TIMEOUT),
+            asyncio.timeout(DEFAULT_API_TIMEOUT),
             self._session.post(TOKEN_ENDPOINT, headers=headers) as response,
         ):
             response.raise_for_status()
@@ -199,15 +199,13 @@ class CarrisApiClient:
             aiohttp.ClientError: If the request fails after all retries.
             asyncio.TimeoutError: If the request times out.
         """
-        import asyncio
-
         last_exception: Exception | None = None
         delay = INITIAL_RETRY_DELAY
 
         for attempt in range(MAX_RETRIES + 1):
             try:
                 async with (
-                    async_timeout.timeout(DEFAULT_API_TIMEOUT),
+                    asyncio.timeout(DEFAULT_API_TIMEOUT),
                     self._session.get(url, headers=headers) as response,
                 ):
                     if response.status == 401:
